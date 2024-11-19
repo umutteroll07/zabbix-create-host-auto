@@ -2,14 +2,19 @@ package controllers
 
 import (
 	"bytes"
+	"time"
+
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
 )
+
+var countCallCreateFunc = 0
 
 const (
 	ZabbixAPIURL = "http://10.150.238.21/zabbix/api_jsonrpc.php"
@@ -18,6 +23,7 @@ const (
 )
 
 func CreateAutoHost(c *fiber.Ctx) error {
+	countCallCreateFunc += 1
 	var request struct {
 		HostCount int `json:"host_count"`
 	}
@@ -34,8 +40,8 @@ func CreateAutoHost(c *fiber.Ctx) error {
 	}
 
 	for i := 1; i <= request.HostCount; i++ {
-		hostName := fmt.Sprintf("Havelsan-Host-AutoCreate-07-Antalya-%d", i)
-		hostID, err := createHost(authToken, hostName, "10.150.238.21")
+		hostName := fmt.Sprintf("Havelsan-Host-AutoCreate--%d.%d", countCallCreateFunc, i)
+		hostID, err := createHost(authToken, hostName, "10.150.238.21", i)
 		if err != nil {
 			log.Printf("Create host failed for %s: %v", hostName, err)
 			return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Create host failed for %s", hostName))
@@ -97,7 +103,23 @@ func loginToZabbix() (string, error) {
 	return authToken, nil
 }
 
-func createHost(authToken, hostName, ipAddress string) (string, error) {
+func createHost(authToken, hostName, ipAddress string, numberOfHost int) (string, error) {
+
+	rand.Seed(time.Now().UnixNano())
+	randomNumber := rand.Intn(50) + 1
+	value := fmt.Sprintf("192.168.122.%d", randomNumber)
+	var macros []map[string]interface{}
+	if numberOfHost <= 6 && numberOfHost >= 1 {
+		macros = []map[string]interface{}{
+			{
+				"macro": "{$IP}",
+				"value": value,
+			},
+		}
+	} else {
+		macros = []map[string]interface{}{}
+	}
+
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "host.create",
@@ -118,6 +140,7 @@ func createHost(authToken, hostName, ipAddress string) (string, error) {
 					"groupid": "2",
 				},
 			},
+			"macros": macros,
 		},
 		"auth": authToken,
 		"id":   2,
