@@ -2,25 +2,19 @@ package controllers
 
 import (
 	"bytes"
-	"time"
-
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 var countCallCreateFunc = 0
-
-const (
-	ZabbixAPIURL = "http://10.150.238.21/zabbix/api_jsonrpc.php"
-	Username     = "Admin"
-	Password     = "zabbix"
-)
 
 func CreateAutoHost(c *fiber.Ctx) error {
 	countCallCreateFunc += 1
@@ -35,13 +29,14 @@ func CreateAutoHost(c *fiber.Ctx) error {
 	authToken, err := loginToZabbix()
 	if err != nil {
 		log.Printf("Login failed: %v", err)
-
 		return c.Status(fiber.StatusInternalServerError).SendString("Login failed")
 	}
 
+	ipAddress := os.Getenv("IP_ADDRESS")
+
 	for i := 1; i <= request.HostCount; i++ {
 		hostName := fmt.Sprintf("Havelsan-Host-AutoCreate--%d.%d", countCallCreateFunc, i)
-		hostID, err := createHost(authToken, hostName, "10.150.238.21", i)
+		hostID, err := createHost(authToken, hostName, ipAddress, i)
 		if err != nil {
 			log.Printf("Create host failed for %s: %v", hostName, err)
 			return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Create host failed for %s", hostName))
@@ -53,6 +48,11 @@ func CreateAutoHost(c *fiber.Ctx) error {
 }
 
 func loginToZabbix() (string, error) {
+	Username := os.Getenv("USERNAME")
+	Password := os.Getenv("PASSWORD")
+	ipAddress := os.Getenv("IP_ADDRESS")
+	zabbixURL := fmt.Sprintf("http://%s/zabbix/api_jsonrpc.php", ipAddress)
+
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "user.login",
@@ -68,7 +68,7 @@ func loginToZabbix() (string, error) {
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", ZabbixAPIURL, bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", zabbixURL, bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
@@ -104,10 +104,9 @@ func loginToZabbix() (string, error) {
 }
 
 func createHost(authToken, hostName, ipAddress string, numberOfHost int) (string, error) {
-
 	rand.Seed(time.Now().UnixNano())
 	randomNumber := rand.Intn(50) + 1
-	value := fmt.Sprintf("192.168.122.%d", randomNumber)
+	value := fmt.Sprintf("%s.%d", os.Getenv("MACROS_IP"), randomNumber)
 	var macros []map[string]interface{}
 	if numberOfHost <= 6 && numberOfHost >= 1 {
 		macros = []map[string]interface{}{
@@ -151,7 +150,7 @@ func createHost(authToken, hostName, ipAddress string, numberOfHost int) (string
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", ZabbixAPIURL, bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/zabbix/api_jsonrpc.php", ipAddress), bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
